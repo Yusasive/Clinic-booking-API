@@ -64,5 +64,11 @@ const future = h => new Date(Date.now() + h * 3600e3).toISOString();
   for (let i = 0; i < 6; i++) rl.push(await call('POST', '/bookings', { slot_id: 'nope', name: 'S', email: 'spam@example.com' }));
   ok(rl.slice(0, 5).every(x => x.s === 404) && rl[5].s === 429 && /^\d+$/.test(rl[5].h.get('Retry-After')), '6th attempt 429 + Retry-After ' + rl[5].h.get('Retry-After'));
   r = await call('POST', '/bookings', { slot_id: 'nope', name: 'S', email: 'other@example.com' }); ok(r.s === 404, 'other email unaffected');
+  // Web proxy: works without a key, but only the patient actions
+  const w = (m, p, b) => fetch(BASE + '/web' + p, { method: m, headers: { 'Content-Type': 'application/json' }, body: b ? JSON.stringify(b) : undefined });
+  ok((await w('GET', '/slots')).status === 200, 'web: slots without key');
+  ok((await w('POST', '/reset', { slots: [] })).status === 404, 'web: reset blocked');
+  ok((await w('GET', '/bookings?email=a@b.co')).status === 404, 'web: email listing blocked');
+  ok((await fetch(BASE + '/slots')).status === 401, 'real API still needs key');
   console.log(fails ? fails + ' FAILED' : 'ALL PASSED'); process.exit(fails ? 1 : 0);
 })();

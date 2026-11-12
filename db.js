@@ -32,8 +32,10 @@ CREATE TABLE IF NOT EXISTS idempotency (
   key       text PRIMARY KEY,
   body_hash text NOT NULL,
   status    int  NOT NULL,
-  response  jsonb NOT NULL
+  response  jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE idempotency ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
 CREATE TABLE IF NOT EXISTS attempts (
   id    bigserial PRIMARY KEY,
   email text NOT NULL,

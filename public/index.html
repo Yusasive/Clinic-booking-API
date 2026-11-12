@@ -55,7 +55,6 @@
     <div class="brand">Clinic Booking</div>
     <div style="display:flex;gap:8px">
       <button class="ghost" id="lookupOpen">Find my booking</button>
-      <button class="ghost" id="keyOpen">API key</button>
     </div>
   </div>
 </header>
@@ -107,20 +106,11 @@
   </form>
 </dialog>
 
-<dialog id="keyDlg" aria-labelledby="keyTitle">
-  <form id="keyForm">
-    <div class="m-head"><h2 id="keyTitle">API key</h2><p>Enter the clinic API key to use this page. It is saved only in this browser.</p></div>
-    <div class="m-body"><label for="key">API key</label><input id="key" type="password" autocomplete="off"></div>
-    <div class="m-foot"><button type="button" class="ghost" data-close>Close</button><button type="submit">Save key</button></div>
-  </form>
-</dialog>
-
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const $ = id => document.getElementById(id);
-const store = { get(k){ try { return localStorage.getItem(k); } catch { return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch {} } };
-let key = store.get('clinicKey') || '', allSlots = [], chosen = null, idemKey = null, current = null, cancelArmed = false;
+let allSlots = [], chosen = null, idemKey = null, current = null, cancelArmed = false;
 
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
 document.querySelectorAll('dialog').forEach(d => d.addEventListener('mousedown', e => { if (e.target === d) d.close(); }));
@@ -130,10 +120,10 @@ function banner(el, text) { el.textContent = ''; if (!text) return; const d = do
 const day = iso => new Date(iso).toLocaleDateString([], { weekday:'long', day:'numeric', month:'long' });
 const time = iso => new Date(iso).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
 const when = iso => day(iso) + ', ' + time(iso);
-const errText = e => e.status === 401 ? 'Wrong or missing API key. Check it and try again.' : e.status === 429 ? `Too many attempts. Please try again in ${e.retry || 'a few'} seconds.` : e.message;
+const errText = e => e.status === 429 ? `Too many attempts. Please try again in ${e.retry || 'a few'} seconds.` : e.message;
 
 async function api(method, path, body, extra = {}) {
-  const r = await fetch(path, { method, headers: { 'X-API-Key': key, 'Content-Type': 'application/json', ...extra }, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch('/web' + path, { method, headers: { 'Content-Type': 'application/json', ...extra }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.error || 'Something went wrong'); e.status = r.status; e.retry = r.headers.get('Retry-After'); throw e; }
   return j;
@@ -143,7 +133,6 @@ function message(text) { const d = document.createElement('div'); d.className = 
 
 async function loadSlots() {
   const box = $('slots');
-  if (!key) return message('Enter your API key to see available times.');
   if (!allSlots.length) box.innerHTML = '<div class="grid">' + '<div class="skeleton"></div>'.repeat(6) + '</div>';
   try {
     allSlots = (await api('GET', '/slots')).slots;
@@ -207,10 +196,7 @@ function openDetail(b, opts = {}) {
 }
 
 $('prov').onchange = renderSlots;
-$('keyOpen').onclick = () => { $('key').value = key; $('keyDlg').showModal(); };
 $('lookupOpen').onclick = () => { banner($('lookMsg'), ''); $('lookDlg').showModal(); $('lookId').focus(); };
-
-$('keyForm').onsubmit = e => { e.preventDefault(); key = $('key').value.trim(); store.set('clinicKey', key); $('keyDlg').close(); allSlots = []; loadSlots(); };
 
 $('form').onsubmit = async e => {
   e.preventDefault();
@@ -244,7 +230,6 @@ $('cancelBtn').onclick = async () => {
   catch (err) { banner($('detailMsg'), errText(err)); $('cancelBtn').disabled = false; cancelArmed = false; $('cancelBtn').textContent = 'Cancel booking'; }
 };
 
-if (!key) $('keyDlg').showModal();
 loadSlots();
 </script>
 </body>

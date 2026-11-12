@@ -30,8 +30,26 @@ app.use((req, res, next) => {
 const err = (res, code, msg) => res.status(code).json({ error: msg });
 const wrap = fn => (req, res, next) => fn(req, res).catch(next);
 
+// The booking page calls /web/* so the API key never reaches the browser.
+// Only the four actions a patient needs are allowed; /reset and email-based listing are not.
+// Everything else (the real API) still requires X-API-Key.
+const WEB_ALLOWED = [
+  ['GET', /^\/slots$/], ['POST', /^\/bookings$/],
+  ['GET', /^\/bookings\/[^/]+$/], ['DELETE', /^\/bookings\/[^/]+$/],
+];
+app.use((req, res, next) => {
+  if (!req.url.startsWith('/web/')) return next();
+  const inner = req.url.slice(4);
+  const pathOnly = inner.split('?')[0];
+  if (!WEB_ALLOWED.some(([m, re]) => m === req.method && re.test(pathOnly))) return err(res, 404, 'not found');
+  req.url = inner;
+  req.viaWeb = true; // server-side flag, cannot be set by a client
+  next();
+});
+
 // Level 2: API key on every API request.
 app.use((req, res, next) => {
+  if (req.viaWeb) return next();
   const given = Buffer.from(String(req.get('X-API-Key') || ''));
   const want = Buffer.from(API_KEY);
   const ok = given.length === want.length && crypto.timingSafeEqual(given, want);
@@ -218,6 +236,13 @@ app.use((e, req, res, next) => {
   err(res, 500, 'internal error');
 });
 
+// Housekeeping: the rate limit window is 60s, idempotency keys only need to live a day.
+const cleanup = () => Promise.all([
+  pool.query(`DELETE FROM attempts WHERE at < now() - interval '10 minutes'`),
+  pool.query(`DELETE FROM idempotency WHERE created_at < now() - interval '24 hours'`),
+]).catch(e => console.error('cleanup failed', e.message));
+setInterval(cleanup, 10 * 60 * 1000).unref();
+
 const port = process.env.PORT || 3000;
-init().then(() => app.listen(port, () => console.log('listening on ' + port)))
+init().then(cleanup).then(() => app.listen(port, () => console.log('listening on ' + port)))
   .catch(e => { console.error(e); process.exit(1); });
